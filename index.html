@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aswin's Money Manager</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body { background-color: #e5e7eb; }
+.dark { background-color: #000 !important; color: white; }
+.dark .bg-white { background-color: #1f2937 !important; }
+.dark .bg-gray-200 { background-color: #374151 !important; }
+.page { display: none; }
+.active { display: block; }
+</style>
+</head>
+
+<body id="body">
+
+<!-- HEADER -->
+<div class="flex justify-between p-3 bg-blue-600 text-white">
+<button onclick="location.reload()">🔄</button>
+<h1 class="font-bold">Aswin's Money Manager</h1>
+<button onclick="toggleDark()">🌙</button>
+</div>
+
+<!-- NAV -->
+<div class="flex justify-around bg-gray-300 p-2 text-sm">
+<button onclick="showPage('dashboard')">Dashboard</button>
+<button onclick="showPage('log')">Log</button>
+<button onclick="showPage('clients')">Clients</button>
+<button onclick="showPage('calendar')">Calendar</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="page active p-3">
+
+<div class="grid grid-cols-2 gap-2 mb-3">
+<div class="bg-white p-2 rounded">Monthly Services: <span id="monthCount">0</span></div>
+<div class="bg-white p-2 rounded">Weekly Services: <span id="weekCount">0</span></div>
+<div class="bg-white p-2 rounded">Money Received: $<span id="received">0</span></div>
+<div class="bg-white p-2 rounded">Pending: $<span id="pending">0</span></div>
+</div>
+
+<!-- ADD SERVICE -->
+<div class="bg-white p-3 rounded mb-3">
+<input id="name" placeholder="Customer Name" class="border p-1 w-full mb-2">
+<input type="date" id="date" class="border p-1 w-full mb-2">
+<input type="time" id="time" class="border p-1 w-full mb-2">
+<button onclick="addService()" class="bg-blue-500 text-white px-3 py-1 rounded">Add</button>
+</div>
+
+<!-- WEEK PICKER -->
+<div class="bg-white p-3 rounded mb-3">
+<h3 class="font-bold mb-2">Check Weekly Report</h3>
+<input type="date" id="weekPicker" class="border p-1 w-full mb-2">
+<button onclick="calculateWeek()" class="bg-blue-500 text-white px-3 py-1 rounded w-full">Check Week</button>
+
+<div class="mt-2">
+<div>Services: <span id="wServices">0</span></div>
+<div>Received: $<span id="wReceived">0</span></div>
+<div>Pending: $<span id="wPending">0</span></div>
+</div>
+
+<button onclick="exportWeekPDF()" class="bg-red-500 text-white p-2 rounded w-full mt-2">Export Weekly PDF</button>
+</div>
+
+<!-- AUTO WEEK -->
+<div class="bg-white p-3 rounded mb-3">
+<h3 class="font-bold">This Week Summary</h3>
+<div>Services: <span id="autoServices">0</span></div>
+<div>Received: $<span id="autoReceived">0</span></div>
+<div>Pending: $<span id="autoPending">0</span></div>
+</div>
+
+<!-- CHART -->
+<div class="bg-white p-3 rounded mb-3">
+<canvas id="weekChart"></canvas>
+</div>
+
+<div class="flex gap-2">
+<button onclick="exportExcel()" class="bg-green-500 text-white p-2 rounded w-full">Export Excel</button>
+<button onclick="window.print()" class="bg-red-500 text-white p-2 rounded w-full">Export PDF</button>
+</div>
+
+</div>
+
+<!-- LOG -->
+<div id="log" class="page p-3">
+<h2 class="font-bold mb-2">Log History</h2>
+<div id="logList"></div>
+</div>
+
+<!-- CLIENTS -->
+<div id="clients" class="page p-3">
+<h2 class="font-bold mb-2">Clients</h2>
+<div id="clientList"></div>
+</div>
+
+<!-- CALENDAR -->
+<div id="calendar" class="page p-3">
+<input type="date" id="calDate" onchange="showCalendarLogs()">
+<div id="calLogs"></div>
+</div>
+
+<script>
+
+let logs = JSON.parse(localStorage.getItem("logs")) || [];
+
+function parseDate(dateStr){
+let p = dateStr.split("-");
+return new Date(p[0], p[1]-1, p[2]);
+}
+
+function save(){
+localStorage.setItem("logs", JSON.stringify(logs));
+updateStats();
+renderLogs();
+renderClients();
+autoWeek();
+drawChart();
+}
+
+function showPage(id){
+document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+}
+
+function toggleDark(){ document.body.classList.toggle("dark"); }
+
+function formatName(name){
+return name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase();
+}
+
+function getWeekRange(date){
+let d = new Date(date);
+let day = d.getDay();
+day = day === 0 ? 7 : day;
+
+let start = new Date(d);
+start.setHours(0,0,0,0);
+start.setDate(d.getDate() - day + 1);
+
+let end = new Date(start);
+end.setDate(start.getDate() + 6);
+end.setHours(23,59,59,999);
+
+return {start,end};
+}
+
+function addService(){
+let name = formatName(document.getElementById("name").value);
+let date = document.getElementById("date").value;
+let time = document.getElementById("time").value;
+
+if(!name || !date || !time) return alert("Fill all fields");
+
+logs.push({name,date,time,cost:15,paid:false});
+
+document.getElementById("name").value="";
+document.getElementById("date").value="";
+document.getElementById("time").value="";
+
+save();
+}
+
+function updateStats(){
+let now = new Date();
+let {start,end} = getWeekRange(now);
+let month = now.getMonth();
+let year = now.getFullYear();
+
+let monthCount=0, weekCount=0, received=0, pending=0;
+
+logs.forEach(l=>{
+let d = parseDate(l.date);
+
+if(d.getMonth()===month && d.getFullYear()===year) monthCount++;
+if(d>=start && d<=end) weekCount++;
+
+if(l.paid) received+=(l.cost||15);
+else pending+=(l.cost||15);
+});
+
+document.getElementById("monthCount").innerText = monthCount;
+document.getElementById("weekCount").innerText = weekCount;
+document.getElementById("received").innerText = received;
+document.getElementById("pending").innerText = pending;
+}
+
+function renderLogs(){
+let div = document.getElementById("logList");
+div.innerHTML="";
+
+[...logs].map((l,i)=>({...l,index:i}))
+.sort((a,b)=> parseDate(b.date) - parseDate(a.date) || b.time.localeCompare(a.time))
+.forEach(l=>{
+div.innerHTML += `
+<div class="bg-white p-2 mt-2 rounded">
+${l.name} - ${l.date} ${l.time}
+<div class="flex gap-2 mt-1">
+<button onclick="editLog(${l.index})" class="bg-blue-500 text-white px-2">Edit</button>
+<button onclick="deleteLog(${l.index})" class="bg-red-500 text-white px-2">Delete</button>
+</div>
+</div>`;
+});
+}
+
+function deleteLog(i){ logs.splice(i,1); save(); }
+
+function editLog(i){
+let n = prompt("Edit Name", logs[i].name);
+if(n) logs[i].name = formatName(n);
+save();
+}
+
+function renderClients(){
+let map = {};
+logs.forEach(l=>{
+let key = l.name.toLowerCase();
+if(!map[key]) map[key]={name:l.name,pending:0};
+if(!l.paid) map[key].pending+=(l.cost||15);
+});
+let div = document.getElementById("clientList");
+div.innerHTML="";
+Object.values(map).forEach(c=>{
+div.innerHTML+=`<div class="bg-white p-2 mt-2 rounded flex justify-between">
+<span>${c.name}</span><span>$${c.pending}</span></div>`;
+});
+}
+
+function calculateWeek(){
+let val = document.getElementById("weekPicker").value;
+if(!val) return alert("Select date");
+
+let {start,end} = getWeekRange(val);
+
+let s=0,r=0,p=0;
+
+logs.forEach(l=>{
+let d=parseDate(l.date);
+if(d>=start && d<=end){
+s++;
+if(l.paid) r+=(l.cost||15);
+else p+=(l.cost||15);
+}
+});
+
+document.getElementById("wServices").innerText=s;
+document.getElementById("wReceived").innerText=r;
+document.getElementById("wPending").innerText=p;
+}
+
+function autoWeek(){
+let {start,end} = getWeekRange(new Date());
+
+let s=0,r=0,p=0;
+
+logs.forEach(l=>{
+let d=parseDate(l.date);
+if(d>=start && d<=end){
+s++;
+if(l.paid) r+=(l.cost||15);
+else p+=(l.cost||15);
+}
+});
+
+document.getElementById("autoServices").innerText=s;
+document.getElementById("autoReceived").innerText=r;
+document.getElementById("autoPending").innerText=p;
+}
+
+let chart;
+
+function drawChart(){
+let days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+let data=[0,0,0,0,0,0,0];
+
+let {start} = getWeekRange(new Date());
+
+logs.forEach(l=>{
+let d=parseDate(l.date);
+let diff=(d-start)/(1000*60*60*24);
+let index=Math.floor(diff+0.5);
+if(index>=0 && index<7) data[index]++;
+});
+
+if(chart) chart.destroy();
+
+chart = new Chart(document.getElementById("weekChart"),{
+type:'bar',
+data:{labels:days,datasets:[{data}]}
+});
+}
+
+function exportWeekPDF(){
+alert("Use 'Check Week' then print for weekly report");
+window.print();
+}
+
+function exportExcel(){
+let csv="Name,Date,Time\n";
+logs.forEach(l=> csv+=`${l.name},${l.date},${l.time}\n`);
+let blob=new Blob([csv]);
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="logs.csv";
+a.click();
+}
+
+function showCalendarLogs(){
+let d=document.getElementById("calDate").value;
+let list=logs.filter(l=>l.date===d)
+.sort((a,b)=> a.time.localeCompare(b.time) || a.name.localeCompare(b.name));
+
+let div=document.getElementById("calLogs");
+div.innerHTML="";
+list.forEach(l=>{
+div.innerHTML+=`<div>${l.name} - ${l.time}</div>`;
+});
+}
+
+updateStats();
+renderLogs();
+renderClients();
+autoWeek();
+drawChart();
+
+</script>
+
+</body>
+</html>
