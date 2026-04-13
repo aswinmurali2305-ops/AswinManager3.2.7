@@ -1,18 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aswin's Money Manager</title>
-
+<title>Money Manager</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { background:#e5e7eb; }
-.dark { background:#000 !important; color:white; }
-.dark .bg-white { background:#1f2937 !important; }
-.dark .bg-gray-200 { background:#374151 !important; }
+body{background:#e5e7eb;}
+.dark{background:#000!important;color:white;}
+.dark .bg-white{background:#1f2937!important;}
+.dark .bg-gray-200{background:#374151!important;}
 .page{display:none;}
 .active{display:block;}
 </style>
@@ -28,7 +25,7 @@ body { background:#e5e7eb; }
 </div>
 
 <!-- NAV -->
-<div class="flex justify-around bg-gray-300 p-2 text-sm">
+<div class="flex justify-around bg-gray-300 p-2">
 <button onclick="showPage('dashboard')">Dashboard</button>
 <button onclick="showPage('log')">Log</button>
 <button onclick="showPage('clients')">Clients</button>
@@ -38,43 +35,65 @@ body { background:#e5e7eb; }
 <!-- DASHBOARD -->
 <div id="dashboard" class="page active p-3">
 
-<div class="grid grid-cols-2 gap-2 mb-3">
-<div class="bg-white p-2 rounded">Monthly: <span id="monthCount">0</span></div>
-<div class="bg-white p-2 rounded">Weekly: <span id="weekCount">0</span></div>
-<div class="bg-white p-2 rounded">Received: $<span id="received">0</span></div>
-<div class="bg-white p-2 rounded">Pending: $<span id="pending">0</span></div>
-</div>
-
-<!-- WEEK FILTER -->
 <div class="bg-white p-2 mb-2 rounded">
 <input type="date" id="weekPicker" onchange="updateStats()">
 </div>
 
-<!-- CHART -->
-<canvas id="chart" class="bg-white p-2 rounded mb-3"></canvas>
+<div class="grid grid-cols-2 gap-2 mb-3">
+<div class="bg-white p-2">Weekly Services: <span id="weekCount">0</span></div>
+<div class="bg-white p-2">Received: $<span id="received">0</span></div>
+<div class="bg-white p-2">Pending: $<span id="pending">0</span></div>
+<div class="bg-white p-2">Total Services: <span id="totalCount">0</span></div>
+</div>
+
+<!-- WEEK 1-4 -->
+<div class="grid grid-cols-2 gap-2">
+
+<div class="bg-white p-2 rounded">
+<b>Week 1</b><br>
+Received: $<span id="w1r">0</span><br>
+Pending: $<span id="w1p">0</span>
+</div>
+
+<div class="bg-white p-2 rounded">
+<b>Week 2</b><br>
+Received: $<span id="w2r">0</span><br>
+Pending: $<span id="w2p">0</span>
+</div>
+
+<div class="bg-white p-2 rounded">
+<b>Week 3</b><br>
+Received: $<span id="w3r">0</span><br>
+Pending: $<span id="w3p">0</span>
+</div>
+
+<div class="bg-white p-2 rounded">
+<b>Week 4</b><br>
+Received: $<span id="w4r">0</span><br>
+Pending: $<span id="w4p">0</span>
+</div>
+
+</div>
 
 <!-- ADD -->
-<div class="bg-white p-3 rounded mb-3">
-<input id="name" placeholder="Customer Name" class="border p-1 w-full mb-2">
-<input type="date" id="date" class="border p-1 w-full mb-2">
-<input type="time" id="time" class="border p-1 w-full mb-2">
-<button onclick="addService()" class="bg-blue-500 text-white px-3 py-1 rounded">Add</button>
+<div class="bg-white p-3 mt-3 rounded">
+<input id="name" placeholder="Customer Name" class="border w-full mb-2">
+<input type="date" id="date" class="border w-full mb-2">
+<input type="time" id="time" class="border w-full mb-2">
+<button onclick="addService()" class="bg-blue-500 text-white p-2">Add</button>
 </div>
 
 </div>
 
 <!-- LOG -->
 <div id="log" class="page p-3">
-<h2 class="font-bold mb-2">Log</h2>
-<input type="date" id="startDate">
-<input type="date" id="endDate">
-<button onclick="filterLogs()">Filter</button>
+<h2>Log</h2>
 <div id="logList"></div>
 </div>
 
 <!-- CLIENT -->
 <div id="clients" class="page p-3">
-<h2 class="font-bold mb-2">Clients</h2>
+<h2>Clients</h2>
 <div id="clientList"></div>
 </div>
 
@@ -87,7 +106,6 @@ body { background:#e5e7eb; }
 <script>
 
 let logs = JSON.parse(localStorage.getItem("logs")) || [];
-let chart;
 
 function save(){
 localStorage.setItem("logs",JSON.stringify(logs));
@@ -101,7 +119,156 @@ document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
 document.getElementById(id).classList.add('active');
 }
 
-function toggleDark(){ document.body.classList.toggle("dark"); }
+function toggleDark(){document.body.classList.toggle("dark");}
+
+// DATE HELPERS
+function formatTime(t){
+let [h,m]=t.split(":");
+h=Number(h);
+let ampm=h>=12?"PM":"AM";
+h=h%12||12;
+return `${h}:${m} ${ampm}`;
+}
+
+function getWeekRange(date){
+let d=new Date(date);
+let day=d.getDay();
+let diff=(day===0?-6:1-day);
+let start=new Date(d);
+start.setDate(d.getDate()+diff);
+let end=new Date(start);
+end.setDate(start.getDate()+6);
+return {start,end};
+}
+
+// ADD
+function addService(){
+let name=nameInput.value;
+let date=dateInput.value;
+let time=timeInput.value;
+if(!name||!date||!time) return alert("Fill all");
+
+logs.push({name,date,time,paid:false});
+save();
+}
+
+// DASHBOARD
+function updateStats(){
+
+let selected=weekPicker.value || new Date();
+let {start,end}=getWeekRange(selected);
+
+let weekCount=0,received=0,pending=0;
+
+let w1r=0,w1p=0,w2r=0,w2p=0,w3r=0,w3p=0,w4r=0,w4p=0;
+
+logs.forEach(l=>{
+let d=new Date(l.date);
+
+// WEEK FILTER
+if(d>=start && d<=end){
+weekCount++;
+if(l.paid) received+=15;
+else pending+=15;
+}
+
+// MONTH WEEK CALC
+let day=d.getDate();
+let week=Math.ceil(day/7);
+
+if(week===1){
+if(l.paid) w1r+=15; else w1p+=15;
+}
+if(week===2){
+if(l.paid) w2r+=15; else w2p+=15;
+}
+if(week===3){
+if(l.paid) w3r+=15; else w3p+=15;
+}
+if(week===4){
+if(l.paid) w4r+=15; else w4p+=15;
+}
+
+});
+
+weekCountEl.innerText=weekCount;
+receivedEl.innerText=received;
+pendingEl.innerText=pending;
+totalCount.innerText=logs.length;
+
+w1rEl.innerText=w1r; w1pEl.innerText=w1p;
+w2rEl.innerText=w2r; w2pEl.innerText=w2p;
+w3rEl.innerText=w3r; w3pEl.innerText=w3p;
+w4rEl.innerText=w4r; w4pEl.innerText=w4p;
+
+}
+
+// LOG
+function renderLogs(){
+logList.innerHTML="";
+logs.slice().reverse().forEach(l=>{
+logList.innerHTML+=`${l.name} - ${l.date} ${formatTime(l.time)}<br>`;
+});
+}
+
+// CLIENT
+function renderClients(){
+let map={};
+logs.forEach(l=>{
+if(!map[l.name]) map[l.name]=0;
+if(!l.paid) map[l.name]+=15;
+});
+
+clientList.innerHTML="";
+Object.keys(map).forEach(name=>{
+clientList.innerHTML+=`
+<div onclick="openClient('${name}')" class="bg-white p-2 mt-2 flex justify-between">
+<span>${name}</span>
+<span class="text-red-500">$${map[name]}</span>
+</div>`;
+});
+}
+
+function openClient(name){
+let data=logs.map((l,i)=>({...l,i}))
+.filter(l=>l.name===name);
+
+let html=`<button onclick="renderClients()">Back</button><h3>${name}</h3>`;
+
+data.forEach(l=>{
+html+=`
+<div class="bg-gray-200 p-2 mt-2">
+${l.date} ${formatTime(l.time)}
+<br>
+<button onclick="markPaid(${l.i})">Paid</button>
+<button onclick="deleteLog(${l.i})">Delete</button>
+</div>`;
+});
+
+clientList.innerHTML=html;
+}
+
+function markPaid(i){logs[i].paid=true;save();}
+function deleteLog(i){logs.splice(i,1);save();}
+
+// CALENDAR
+function showCalendarLogs(){
+let d=calDate.value;
+calLogs.innerHTML="";
+logs.filter(l=>l.date===d).forEach(l=>{
+calLogs.innerHTML+=`${l.name} - ${formatTime(l.time)}<br>`;
+});
+}
+
+// INIT
+updateStats();
+renderLogs();
+renderClients();
+
+</script>
+
+</body>
+</html>function toggleDark(){ document.body.classList.toggle("dark"); }
 
 function formatTime(t){
 let [h,m]=t.split(":");
