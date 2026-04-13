@@ -4,16 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aswin's Money Manager</title>
+
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { background-color: #e5e7eb; }
-.dark { background-color: #000 !important; color: white; }
-.dark .bg-white { background-color: #1f2937 !important; }
-.dark .bg-gray-200 { background-color: #374151 !important; }
-.page { display: none; }
-.active { display: block; }
+body { background:#e5e7eb; }
+.dark { background:#000 !important; color:white; }
+.dark .bg-white { background:#1f2937 !important; }
+.dark .bg-gray-200 { background:#374151 !important; }
+.page{display:none;}
+.active{display:block;}
 </style>
 </head>
 
@@ -22,7 +23,7 @@ body { background-color: #e5e7eb; }
 <!-- HEADER -->
 <div class="flex justify-between p-3 bg-blue-600 text-white">
 <button onclick="location.reload()">🔄</button>
-<h1 class="font-bold">Aswin's Money Manager</h1>
+<h1 class="font-bold">Money Manager</h1>
 <button onclick="toggleDark()">🌙</button>
 </div>
 
@@ -38,12 +39,21 @@ body { background-color: #e5e7eb; }
 <div id="dashboard" class="page active p-3">
 
 <div class="grid grid-cols-2 gap-2 mb-3">
-<div class="bg-white p-2 rounded">Monthly Services: <span id="monthCount">0</span></div>
-<div class="bg-white p-2 rounded">Weekly Services: <span id="weekCount">0</span></div>
-<div class="bg-white p-2 rounded">Money Received: $<span id="received">0</span></div>
+<div class="bg-white p-2 rounded">Monthly: <span id="monthCount">0</span></div>
+<div class="bg-white p-2 rounded">Weekly: <span id="weekCount">0</span></div>
+<div class="bg-white p-2 rounded">Received: $<span id="received">0</span></div>
 <div class="bg-white p-2 rounded">Pending: $<span id="pending">0</span></div>
 </div>
 
+<!-- WEEK FILTER -->
+<div class="bg-white p-2 mb-2 rounded">
+<input type="date" id="weekPicker" onchange="updateStats()">
+</div>
+
+<!-- CHART -->
+<canvas id="chart" class="bg-white p-2 rounded mb-3"></canvas>
+
+<!-- ADD -->
 <div class="bg-white p-3 rounded mb-3">
 <input id="name" placeholder="Customer Name" class="border p-1 w-full mb-2">
 <input type="date" id="date" class="border p-1 w-full mb-2">
@@ -55,11 +65,14 @@ body { background-color: #e5e7eb; }
 
 <!-- LOG -->
 <div id="log" class="page p-3">
-<h2 class="font-bold mb-2">Log History</h2>
+<h2 class="font-bold mb-2">Log</h2>
+<input type="date" id="startDate">
+<input type="date" id="endDate">
+<button onclick="filterLogs()">Filter</button>
 <div id="logList"></div>
 </div>
 
-<!-- CLIENTS -->
+<!-- CLIENT -->
 <div id="clients" class="page p-3">
 <h2 class="font-bold mb-2">Clients</h2>
 <div id="clientList"></div>
@@ -74,34 +87,214 @@ body { background-color: #e5e7eb; }
 <script>
 
 let logs = JSON.parse(localStorage.getItem("logs")) || [];
-
-function parseDate(d){
-let p = d.split("-");
-return new Date(p[0], p[1]-1, p[2]);
-}
-
-function formatDate(d){
-let parts = d.split("-");
-let date = new Date(parts[0], parts[1]-1, parts[2]);
-return date.toLocaleDateString('en-GB', {
-day:'2-digit', month:'short', year:'numeric'
-});
-}
-
-function formatTime(t){
-let [h,m] = t.split(":");
-h = Number(h);
-let ampm = h>=12?"PM":"AM";
-h = h%12 || 12;
-return `${h}:${m} ${ampm}`;
-}
+let chart;
 
 function save(){
-localStorage.setItem("logs", JSON.stringify(logs));
+localStorage.setItem("logs",JSON.stringify(logs));
+updateStats();
 renderLogs();
 renderClients();
 }
 
+function showPage(id){
+document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+}
+
+function toggleDark(){ document.body.classList.toggle("dark"); }
+
+function formatTime(t){
+let [h,m]=t.split(":");
+h=Number(h);
+let ampm=h>=12?"PM":"AM";
+h=h%12||12;
+return `${h}:${m} ${ampm}`;
+}
+
+function formatDate(d){
+let p=d.split("-");
+let date=new Date(p[0],p[1]-1,p[2]);
+return date.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+function addService(){
+let name=document.getElementById("name").value;
+let date=document.getElementById("date").value;
+let time=document.getElementById("time").value;
+if(!name||!date||!time) return alert("Fill all");
+
+logs.push({name,date,time,cost:15,paid:false});
+save();
+}
+
+function getWeekRange(date){
+let d=new Date(date);
+let day=d.getDay();
+let diff=(day===0?-6:1-day);
+let start=new Date(d);
+start.setDate(d.getDate()+diff);
+
+let end=new Date(start);
+end.setDate(start.getDate()+6);
+
+return {start,end};
+}
+
+function updateStats(){
+
+let selected=document.getElementById("weekPicker").value || new Date();
+let {start,end}=getWeekRange(selected);
+
+let month=new Date().getMonth();
+
+let m=0,w=0,r=0,p=0;
+let daily={};
+
+logs.forEach(l=>{
+let d=new Date(l.date);
+
+if(d.getMonth()===month) m++;
+
+if(d>=start && d<=end){
+w++;
+let day=l.date;
+daily[day]=(daily[day]||0)+1;
+}
+
+if(l.paid) r+=15;
+else p+=15;
+});
+
+document.getElementById("monthCount").innerText=m;
+document.getElementById("weekCount").innerText=w;
+document.getElementById("received").innerText=r;
+document.getElementById("pending").innerText=p;
+
+drawChart(daily);
+}
+
+function drawChart(data){
+let ctx=document.getElementById("chart");
+
+if(chart) chart.destroy();
+
+chart=new Chart(ctx,{
+type:'bar',
+data:{
+labels:Object.keys(data),
+datasets:[{label:'Services',data:Object.values(data)}]
+}
+});
+}
+
+function renderLogs(list=logs){
+let div=document.getElementById("logList");
+div.innerHTML="";
+
+list.map((l,i)=>({...l,index:i}))
+.sort((a,b)=> new Date(b.date)-new Date(a.date))
+.forEach(l=>{
+div.innerHTML+=`
+<div class="bg-white p-2 mt-2">
+${l.name} - ${formatDate(l.date)} ${formatTime(l.time)}
+</div>`;
+});
+}
+
+function filterLogs(){
+let s=startDate.value,e=endDate.value;
+let f=logs.filter(l=>(!s||l.date>=s)&&(!e||l.date<=e));
+renderLogs(f);
+}
+
+function renderClients(){
+let map={};
+
+logs.forEach(l=>{
+let k=l.name.toLowerCase();
+if(!map[k]) map[k]={name:l.name,pending:0};
+if(!l.paid) map[k].pending+=15;
+});
+
+let sorted=Object.values(map).sort((a,b)=>b.pending-a.pending);
+
+let div=document.getElementById("clientList");
+div.innerHTML="";
+
+sorted.forEach(c=>{
+div.innerHTML+=`
+<div onclick="openClient('${c.name}')" class="bg-white p-3 mt-2 flex justify-between">
+<span>${c.name}</span>
+<span class="text-red-500">$${c.pending}</span>
+</div>`;
+});
+}
+
+function openClient(name){
+
+let data=logs.map((l,i)=>({...l,index:i}))
+.filter(l=>l.name.toLowerCase()===name.toLowerCase());
+
+let html=`<button onclick="renderClients()">⬅ Back</button><h3>${name}</h3>`;
+
+data.forEach(l=>{
+html+=`
+<div class="bg-gray-200 p-2 mt-2">
+${formatDate(l.date)} ${formatTime(l.time)}
+<div>
+<button onclick="editLog(${l.index})">Edit</button>
+${!l.paid
+? `<button onclick="markPaid(${l.index})">Paid</button>`
+: `<button onclick="markUnpaid(${l.index})">Paid Already</button>`}
+<button onclick="deleteLog(${l.index})">Delete</button>
+</div>
+</div>`;
+});
+
+html+=`<button onclick="share('${name}')">Share WhatsApp</button>`;
+
+clientList.innerHTML=html;
+}
+
+function markPaid(i){logs[i].paid=true;save();}
+function markUnpaid(i){logs[i].paid=false;save();}
+function deleteLog(i){logs.splice(i,1);save();}
+
+function editLog(i){
+let n=prompt("Edit",logs[i].name);
+if(n) logs[i].name=n;
+save();
+}
+
+function share(name){
+let d=logs.filter(l=>l.name.toLowerCase()===name.toLowerCase()&&!l.paid);
+let total=d.length*15;
+
+let msg=`Hi ${name},%0A`;
+d.forEach(l=>msg+=`${formatDate(l.date)} ${formatTime(l.time)}%0A`);
+msg+=`Total $${total}`;
+
+window.open(`https://wa.me/?text=${msg}`);
+}
+
+function showCalendarLogs(){
+let d=calDate.value;
+let list=logs.filter(l=>l.date===d);
+
+calLogs.innerHTML="";
+list.forEach(l=>{
+calLogs.innerHTML+=`${l.name} - ${formatTime(l.time)}<br>`;
+});
+}
+
+updateStats();
+renderLogs();
+renderClients();
+
+</script>
+
+</body>
+</html>
 function showPage(id){
 document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
 document.getElementById(id).classList.add('active');
