@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Money Manager</title>
+
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { background:#e5e7eb; }
@@ -49,6 +51,8 @@ body { background:#e5e7eb; }
 <div class="bg-white p-2 rounded">Week 4<br>R:$<span id="w4r">0</span> P:$<span id="w4p">0</span></div>
 </div>
 
+<canvas id="chart" class="bg-white mt-3 p-2 rounded"></canvas>
+
 <div class="bg-white p-3 mt-3 rounded">
 <input id="name" placeholder="Customer Name" class="border p-1 w-full mb-2">
 <input type="date" id="date" class="border p-1 w-full mb-2">
@@ -79,12 +83,16 @@ body { background:#e5e7eb; }
 <script>
 
 let logs = JSON.parse(localStorage.getItem("logs")) || [];
+let chart;
+
+/* ---------- BASIC ---------- */
 
 function save(){
 localStorage.setItem("logs", JSON.stringify(logs));
 update();
 renderLogs();
 renderClients();
+drawChart();
 }
 
 function showPage(id){
@@ -109,16 +117,20 @@ let p=d.split("-");
 return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 }
 
+/* ---------- ADD ---------- */
+
 function addService(){
 let name=document.getElementById("name").value.trim();
 let date=document.getElementById("date").value;
 let time=document.getElementById("time").value;
 
-if(!name||!date||!time) return;
+if(!name||!date||!time) return alert("Fill all fields");
 
 logs.push({name,date,time,paid:false});
 save();
 }
+
+/* ---------- WEEK LOGIC ---------- */
 
 function getWeekStart(d){
 let date=new Date(d);
@@ -126,6 +138,8 @@ let day=date.getDay()||7;
 if(day!==1) date.setDate(date.getDate()-day+1);
 return date;
 }
+
+/* ---------- DASHBOARD ---------- */
 
 function update(){
 let now=new Date();
@@ -140,10 +154,10 @@ let d=new Date(l.date);
 
 if(d>=start && d<=new Date(start.getTime()+6*86400000)) weekCount++;
 
-let weekIndex=Math.floor((d.getDate()-1)/7);
-if(weekIndex<4){
-if(l.paid) w[weekIndex].r+=15;
-else w[weekIndex].p+=15;
+let index=Math.floor((d.getDate()-1)/7);
+if(index<4){
+if(l.paid) w[index].r+=15;
+else w[index].p+=15;
 }
 
 if(l.paid) received+=15;
@@ -160,6 +174,8 @@ document.getElementById("w"+n+"r").innerText=w[i].r;
 document.getElementById("w"+n+"p").innerText=w[i].p;
 });
 }
+
+/* ---------- LOG ---------- */
 
 function renderLogs(){
 let div=document.getElementById("logList");
@@ -183,21 +199,22 @@ save();
 }
 
 function editLog(i){
-let n=prompt("Edit name",logs[i].name);
+let n=prompt("Edit Name",logs[i].name);
 if(n) logs[i].name=n;
 save();
 }
 
+/* ---------- CLIENTS ---------- */
+
 function renderClients(){
 let map={};
 
-logs.forEach((l,i)=>{
+logs.forEach(l=>{
 if(!map[l.name]) map[l.name]={pending:0};
 if(!l.paid) map[l.name].pending+=15;
 });
 
-let arr=Object.keys(map).map(name=>({name,pending:map[name].pending}));
-
+let arr=Object.keys(map).map(n=>({name:n,pending:map[n].pending}));
 arr.sort((a,b)=>b.pending-a.pending);
 
 let div=document.getElementById("clientList");
@@ -223,9 +240,15 @@ html+=`
 <div class="bg-gray-200 p-2 mt-2">
 ${formatDate(l.date)} ${formatTime(l.time)}
 <div class="flex gap-2 mt-1">
+
 <button onclick="editLog(${l.i})" class="bg-blue-500 text-white px-2">Edit</button>
-<button onclick="togglePaid(${l.i})" class="bg-green-500 text-white px-2">${l.paid?"Paid":"Mark Paid"}</button>
+
+${l.paid 
+? `<button onclick="togglePaid(${l.i})" class="bg-pink-500 text-white px-2">Paid Already</button>` 
+: `<button onclick="togglePaid(${l.i})" class="bg-green-500 text-white px-2">Paid</button>`}
+
 <button onclick="deleteLog(${l.i})" class="bg-red-500 text-white px-2">Delete</button>
+
 </div>
 </div>`;
 });
@@ -239,6 +262,8 @@ function togglePaid(i){
 logs[i].paid=!logs[i].paid;
 save();
 }
+
+/* ---------- WHATSAPP ---------- */
 
 function share(name){
 let data=logs.filter(l=>l.name===name&&!l.paid);
@@ -254,6 +279,8 @@ msg+=`%0ATotal: $${total}`;
 window.open("https://wa.me/?text="+msg);
 }
 
+/* ---------- CALENDAR ---------- */
+
 function showCalendar(){
 let d=document.getElementById("calDate").value;
 let list=logs.filter(l=>l.date===d);
@@ -266,1163 +293,42 @@ div.innerHTML+=`<div>${l.name} - ${formatTime(l.time)}</div>`;
 });
 }
 
+/* ---------- GRAPH ---------- */
+
+function drawChart(){
+
+let received=[0,0,0,0];
+let pending=[0,0,0,0];
+
+logs.forEach(l=>{
+let d=new Date(l.date);
+let w=Math.floor((d.getDate()-1)/7);
+
+if(w<4){
+if(l.paid) received[w]+=15;
+else pending[w]+=15;
+}
+});
+
+if(chart) chart.destroy();
+
+chart=new Chart(document.getElementById("chart"),{
+type:'bar',
+data:{
+labels:["Week 1","Week 2","Week 3","Week 4"],
+datasets:[
+{label:"Received",data:received},
+{label:"Pending",data:pending}
+]
+}
+});
+}
+
+/* ---------- INIT ---------- */
+
 update();
 renderLogs();
 renderClients();
-
-</script>
-
-</body>
-</html>h = Number(h);
-let ampm = h>=12?"PM":"AM";
-h = h%12 || 12;
-return `${h}:${m} ${ampm}`;
-}
-
-function getWeekRange(date){
-let d = new Date(date);
-let day = d.getDay();
-let diff = (day===0?-6:1-day);
-let start = new Date(d);
-start.setDate(d.getDate()+diff);
-let end = new Date(start);
-end.setDate(start.getDate()+6);
-return {start,end};
-}
-
-function addService(){
-let name = document.getElementById("name").value.trim();
-let date = document.getElementById("date").value;
-let time = document.getElementById("time").value;
-
-if(!name || !date || !time) return alert("Fill all fields");
-
-logs.push({name,date,time,paid:false});
-save();
-}
-
-function updateStats(){
-
-let selected = document.getElementById("weekPicker").value || new Date();
-let {start,end} = getWeekRange(selected);
-
-let weekCount=0,received=0,pending=0;
-
-let w1r=0,w1p=0,w2r=0,w2p=0,w3r=0,w3p=0,w4r=0,w4p=0;
-
-logs.forEach(l=>{
-let d = new Date(l.date);
-
-if(d>=start && d<=end){
-weekCount++;
-if(l.paid) received+=15;
-else pending+=15;
-}
-
-let week = Math.ceil(d.getDate()/7);
-
-if(week===1){ l.paid?w1r+=15:w1p+=15; }
-if(week===2){ l.paid?w2r+=15:w2p+=15; }
-if(week===3){ l.paid?w3r+=15:w3p+=15; }
-if(week===4){ l.paid?w4r+=15:w4p+=15; }
-
-});
-
-document.getElementById("weekCount").innerText=weekCount;
-document.getElementById("received").innerText=received;
-document.getElementById("pending").innerText=pending;
-document.getElementById("totalCount").innerText=logs.length;
-
-document.getElementById("w1r").innerText=w1r;
-document.getElementById("w1p").innerText=w1p;
-document.getElementById("w2r").innerText=w2r;
-document.getElementById("w2p").innerText=w2p;
-document.getElementById("w3r").innerText=w3r;
-document.getElementById("w3p").innerText=w3p;
-document.getElementById("w4r").innerText=w4r;
-document.getElementById("w4p").innerText=w4p;
-
-}
-
-function renderLogs(){
-let div = document.getElementById("logList");
-div.innerHTML="";
-logs.slice().reverse().forEach(l=>{
-div.innerHTML += `<div>${l.name} - ${l.date} ${formatTime(l.time)}</div>`;
-});
-}
-
-function renderClients(){
-
-let map = {};
-
-logs.forEach(l=>{
-let key = l.name.toLowerCase();
-if(!map[key]) map[key]={name:l.name,pending:0};
-if(!l.paid) map[key].pending+=15;
-});
-
-let div = document.getElementById("clientList");
-div.innerHTML="";
-
-Object.values(map).forEach(c=>{
-div.innerHTML += `
-<div class="bg-white p-2 mt-2 flex justify-between rounded"
-onclick="openClient('${c.name.replace(/'/g,"")}')">
-<span>${c.name}</span>
-<span class="text-red-500 font-bold">$${c.pending}</span>
-</div>`;
-});
-}
-
-function openClient(name){
-
-let data = logs.map((l,i)=>({...l,i}))
-.filter(l=>l.name.toLowerCase()===name.toLowerCase());
-
-let html = `<button onclick="renderClients()" class="bg-gray-500 text-white px-2 py-1 mb-2">⬅ Back</button>
-<h3 class="font-bold mb-2">${name}</h3>`;
-
-data.forEach(l=>{
-html += `
-<div class="bg-gray-200 p-2 mt-2 rounded">
-${l.date} ${formatTime(l.time)}
-<div class="flex gap-2 mt-2">
-<button onclick="markPaid(${l.i})" class="bg-green-500 text-white px-2">Paid</button>
-<button onclick="markUnpaid(${l.i})" class="bg-pink-500 text-white px-2">Unpaid</button>
-<button onclick="deleteLog(${l.i})" class="bg-red-500 text-white px-2">Delete</button>
-</div>
-</div>`;
-});
-
-html += `<button onclick="share('${name}')" class="bg-blue-500 text-white mt-3 p-2 w-full rounded">Share via WhatsApp</button>`;
-
-document.getElementById("clientList").innerHTML = html;
-}
-
-function markPaid(i){ logs[i].paid=true; save(); }
-function markUnpaid(i){ logs[i].paid=false; save(); }
-function deleteLog(i){ logs.splice(i,1); save(); }
-
-function share(name){
-let data = logs.filter(l=>l.name===name && !l.paid);
-let total = data.length*15;
-let msg = `Hi ${name},%0APending:%0A`;
-data.forEach(l=> msg+=`${l.date} ${formatTime(l.time)}%0A`);
-msg += `Total: $${total}`;
-window.open(`https://wa.me/?text=${msg}`);
-}
-
-function showCalendarLogs(){
-let d = document.getElementById("calDate").value;
-let div = document.getElementById("calLogs");
-div.innerHTML="";
-logs.filter(l=>l.date===d).forEach(l=>{
-div.innerHTML += `<div>${l.name} - ${formatTime(l.time)}</div>`;
-});
-}
-
-updateStats();
-renderLogs();
-renderClients();
-
-</script>
-
-</body>
-</html><div id="calLogs"></div>
-</div>
-
-<script>
-
-let logs = JSON.parse(localStorage.getItem("logs")) || [];
-
-// SAVE
-function save(){
-localStorage.setItem("logs", JSON.stringify(logs));
-updateStats();
-renderLogs();
-renderClients();
-}
-
-// NAV
-function showPage(id){
-document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-document.getElementById(id).classList.add('active');
-}
-
-function toggleDark(){
-document.body.classList.toggle("dark");
-}
-
-// TIME FORMAT
-function formatTime(t){
-let [h,m] = t.split(":");
-h = Number(h);
-let ampm = h>=12 ? "PM":"AM";
-h = h%12 || 12;
-return `${h}:${m} ${ampm}`;
-}
-
-// WEEK RANGE (MON-SUN)
-function getWeekRange(date){
-let d = new Date(date);
-let day = d.getDay();
-let diff = (day===0?-6:1-day);
-let start = new Date(d);
-start.setDate(d.getDate()+diff);
-let end = new Date(start);
-end.setDate(start.getDate()+6);
-return {start,end};
-}
-
-// ADD SERVICE
-function addService(){
-let name = document.getElementById("name").value.trim();
-let date = document.getElementById("date").value;
-let time = document.getElementById("time").value;
-
-if(!name || !date || !time) return alert("Fill all fields");
-
-logs.push({name,date,time,paid:false});
-save();
-
-document.getElementById("name").value="";
-document.getElementById("date").value="";
-document.getElementById("time").value="";
-}
-
-// DASHBOARD
-function updateStats(){
-
-let selected = document.getElementById("weekPicker").value || new Date();
-let {start,end} = getWeekRange(selected);
-
-let weekCount=0,received=0,pending=0;
-
-let w1r=0,w1p=0,w2r=0,w2p=0,w3r=0,w3p=0,w4r=0,w4p=0;
-
-logs.forEach(l=>{
-let d = new Date(l.date);
-
-// WEEK FILTER
-if(d>=start && d<=end){
-weekCount++;
-if(l.paid) received+=15;
-else pending+=15;
-}
-
-// MONTH WEEKS
-let week = Math.ceil(d.getDate()/7);
-
-if(week===1){ l.paid?w1r+=15:w1p+=15; }
-if(week===2){ l.paid?w2r+=15:w2p+=15; }
-if(week===3){ l.paid?w3r+=15:w3p+=15; }
-if(week===4){ l.paid?w4r+=15:w4p+=15; }
-
-});
-
-document.getElementById("weekCount").innerText=weekCount;
-document.getElementById("received").innerText=received;
-document.getElementById("pending").innerText=pending;
-document.getElementById("totalCount").innerText=logs.length;
-
-document.getElementById("w1r").innerText=w1r;
-document.getElementById("w1p").innerText=w1p;
-document.getElementById("w2r").innerText=w2r;
-document.getElementById("w2p").innerText=w2p;
-document.getElementById("w3r").innerText=w3r;
-document.getElementById("w3p").innerText=w3p;
-document.getElementById("w4r").innerText=w4r;
-document.getElementById("w4p").innerText=w4p;
-
-}
-
-// LOG
-function renderLogs(){
-let div = document.getElementById("logList");
-div.innerHTML="";
-
-logs.slice().reverse().forEach(l=>{
-div.innerHTML += `<div>${l.name} - ${l.date} ${formatTime(l.time)}</div>`;
-});
-}
-
-// CLIENTS
-function renderClients(){
-let map = {};
-
-logs.forEach(l=>{
-if(!map[l.name]) map[l.name]=0;
-if(!l.paid) map[l.name]+=15;
-});
-
-let div = document.getElementById("clientList");
-div.innerHTML="";
-
-Object.keys(map).forEach(name=>{
-div.innerHTML += `
-<div onclick="openClient('${name}')" class="bg-white p-2 mt-2 flex justify-between">
-<span>${name}</span>
-<span class="text-red-500">$${map[name]}</span>
-</div>`;
-});
-}
-
-// CLIENT DETAILS
-function openClient(name){
-let data = logs.map((l,i)=>({...l,i}))
-.filter(l=>l.name===name);
-
-let html = `<button onclick="renderClients()">⬅ Back</button><h3>${name}</h3>`;
-
-data.forEach(l=>{
-html += `
-<div class="bg-gray-200 p-2 mt-2">
-${l.date} ${formatTime(l.time)}<br>
-<button onclick="markPaid(${l.i})">Paid</button>
-<button onclick="markUnpaid(${l.i})">Unpaid</button>
-<button onclick="deleteLog(${l.i})">Delete</button>
-</div>`;
-});
-
-html += `<button onclick="share('${name}')">Share via WhatsApp</button>`;
-
-document.getElementById("clientList").innerHTML = html;
-}
-
-// ACTIONS
-function markPaid(i){ logs[i].paid=true; save(); }
-function markUnpaid(i){ logs[i].paid=false; save(); }
-function deleteLog(i){ logs.splice(i,1); save(); }
-
-// SHARE
-function share(name){
-let data = logs.filter(l=>l.name===name && !l.paid);
-let total = data.length*15;
-
-let msg = `Hi ${name},%0APending:%0A`;
-data.forEach(l=> msg+=`${l.date} ${formatTime(l.time)}%0A`);
-msg += `Total: $${total}`;
-
-window.open(`https://wa.me/?text=${msg}`);
-}
-
-// CALENDAR
-function showCalendarLogs(){
-let d = document.getElementById("calDate").value;
-let div = document.getElementById("calLogs");
-
-div.innerHTML="";
-logs.filter(l=>l.date===d).forEach(l=>{
-div.innerHTML += `<div>${l.name} - ${formatTime(l.time)}</div>`;
-});
-}
-
-// INIT
-updateStats();
-renderLogs();
-renderClients();
-
-</script>
-
-</body>
-</html></div>
-
-<script>
-
-let logs = JSON.parse(localStorage.getItem("logs")) || [];
-
-function save(){
-localStorage.setItem("logs",JSON.stringify(logs));
-updateStats();
-renderLogs();
-renderClients();
-}
-
-function showPage(id){
-document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-document.getElementById(id).classList.add('active');
-}
-
-function toggleDark(){document.body.classList.toggle("dark");}
-
-// DATE HELPERS
-function formatTime(t){
-let [h,m]=t.split(":");
-h=Number(h);
-let ampm=h>=12?"PM":"AM";
-h=h%12||12;
-return `${h}:${m} ${ampm}`;
-}
-
-function getWeekRange(date){
-let d=new Date(date);
-let day=d.getDay();
-let diff=(day===0?-6:1-day);
-let start=new Date(d);
-start.setDate(d.getDate()+diff);
-let end=new Date(start);
-end.setDate(start.getDate()+6);
-return {start,end};
-}
-
-// ADD
-function addService(){
-let name=nameInput.value;
-let date=dateInput.value;
-let time=timeInput.value;
-if(!name||!date||!time) return alert("Fill all");
-
-logs.push({name,date,time,paid:false});
-save();
-}
-
-// DASHBOARD
-function updateStats(){
-
-let selected=weekPicker.value || new Date();
-let {start,end}=getWeekRange(selected);
-
-let weekCount=0,received=0,pending=0;
-
-let w1r=0,w1p=0,w2r=0,w2p=0,w3r=0,w3p=0,w4r=0,w4p=0;
-
-logs.forEach(l=>{
-let d=new Date(l.date);
-
-// WEEK FILTER
-if(d>=start && d<=end){
-weekCount++;
-if(l.paid) received+=15;
-else pending+=15;
-}
-
-// MONTH WEEK CALC
-let day=d.getDate();
-let week=Math.ceil(day/7);
-
-if(week===1){
-if(l.paid) w1r+=15; else w1p+=15;
-}
-if(week===2){
-if(l.paid) w2r+=15; else w2p+=15;
-}
-if(week===3){
-if(l.paid) w3r+=15; else w3p+=15;
-}
-if(week===4){
-if(l.paid) w4r+=15; else w4p+=15;
-}
-
-});
-
-weekCountEl.innerText=weekCount;
-receivedEl.innerText=received;
-pendingEl.innerText=pending;
-totalCount.innerText=logs.length;
-
-w1rEl.innerText=w1r; w1pEl.innerText=w1p;
-w2rEl.innerText=w2r; w2pEl.innerText=w2p;
-w3rEl.innerText=w3r; w3pEl.innerText=w3p;
-w4rEl.innerText=w4r; w4pEl.innerText=w4p;
-
-}
-
-// LOG
-function renderLogs(){
-logList.innerHTML="";
-logs.slice().reverse().forEach(l=>{
-logList.innerHTML+=`${l.name} - ${l.date} ${formatTime(l.time)}<br>`;
-});
-}
-
-// CLIENT
-function renderClients(){
-let map={};
-logs.forEach(l=>{
-if(!map[l.name]) map[l.name]=0;
-if(!l.paid) map[l.name]+=15;
-});
-
-clientList.innerHTML="";
-Object.keys(map).forEach(name=>{
-clientList.innerHTML+=`
-<div onclick="openClient('${name}')" class="bg-white p-2 mt-2 flex justify-between">
-<span>${name}</span>
-<span class="text-red-500">$${map[name]}</span>
-</div>`;
-});
-}
-
-function openClient(name){
-let data=logs.map((l,i)=>({...l,i}))
-.filter(l=>l.name===name);
-
-let html=`<button onclick="renderClients()">Back</button><h3>${name}</h3>`;
-
-data.forEach(l=>{
-html+=`
-<div class="bg-gray-200 p-2 mt-2">
-${l.date} ${formatTime(l.time)}
-<br>
-<button onclick="markPaid(${l.i})">Paid</button>
-<button onclick="deleteLog(${l.i})">Delete</button>
-</div>`;
-});
-
-clientList.innerHTML=html;
-}
-
-function markPaid(i){logs[i].paid=true;save();}
-function deleteLog(i){logs.splice(i,1);save();}
-
-// CALENDAR
-function showCalendarLogs(){
-let d=calDate.value;
-calLogs.innerHTML="";
-logs.filter(l=>l.date===d).forEach(l=>{
-calLogs.innerHTML+=`${l.name} - ${formatTime(l.time)}<br>`;
-});
-}
-
-// INIT
-updateStats();
-renderLogs();
-renderClients();
-
-</script>
-
-</body>
-</html>function toggleDark(){ document.body.classList.toggle("dark"); }
-
-function formatTime(t){
-let [h,m]=t.split(":");
-h=Number(h);
-let ampm=h>=12?"PM":"AM";
-h=h%12||12;
-return `${h}:${m} ${ampm}`;
-}
-
-function formatDate(d){
-let p=d.split("-");
-let date=new Date(p[0],p[1]-1,p[2]);
-return date.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
-}
-
-function addService(){
-let name=document.getElementById("name").value;
-let date=document.getElementById("date").value;
-let time=document.getElementById("time").value;
-if(!name||!date||!time) return alert("Fill all");
-
-logs.push({name,date,time,cost:15,paid:false});
-save();
-}
-
-function getWeekRange(date){
-let d=new Date(date);
-let day=d.getDay();
-let diff=(day===0?-6:1-day);
-let start=new Date(d);
-start.setDate(d.getDate()+diff);
-
-let end=new Date(start);
-end.setDate(start.getDate()+6);
-
-return {start,end};
-}
-
-function updateStats(){
-
-let selected=document.getElementById("weekPicker").value || new Date();
-let {start,end}=getWeekRange(selected);
-
-let month=new Date().getMonth();
-
-let m=0,w=0,r=0,p=0;
-let daily={};
-
-logs.forEach(l=>{
-let d=new Date(l.date);
-
-if(d.getMonth()===month) m++;
-
-if(d>=start && d<=end){
-w++;
-let day=l.date;
-daily[day]=(daily[day]||0)+1;
-}
-
-if(l.paid) r+=15;
-else p+=15;
-});
-
-document.getElementById("monthCount").innerText=m;
-document.getElementById("weekCount").innerText=w;
-document.getElementById("received").innerText=r;
-document.getElementById("pending").innerText=p;
-
-drawChart(daily);
-}
-
-function drawChart(data){
-let ctx=document.getElementById("chart");
-
-if(chart) chart.destroy();
-
-chart=new Chart(ctx,{
-type:'bar',
-data:{
-labels:Object.keys(data),
-datasets:[{label:'Services',data:Object.values(data)}]
-}
-});
-}
-
-function renderLogs(list=logs){
-let div=document.getElementById("logList");
-div.innerHTML="";
-
-list.map((l,i)=>({...l,index:i}))
-.sort((a,b)=> new Date(b.date)-new Date(a.date))
-.forEach(l=>{
-div.innerHTML+=`
-<div class="bg-white p-2 mt-2">
-${l.name} - ${formatDate(l.date)} ${formatTime(l.time)}
-</div>`;
-});
-}
-
-function filterLogs(){
-let s=startDate.value,e=endDate.value;
-let f=logs.filter(l=>(!s||l.date>=s)&&(!e||l.date<=e));
-renderLogs(f);
-}
-
-function renderClients(){
-let map={};
-
-logs.forEach(l=>{
-let k=l.name.toLowerCase();
-if(!map[k]) map[k]={name:l.name,pending:0};
-if(!l.paid) map[k].pending+=15;
-});
-
-let sorted=Object.values(map).sort((a,b)=>b.pending-a.pending);
-
-let div=document.getElementById("clientList");
-div.innerHTML="";
-
-sorted.forEach(c=>{
-div.innerHTML+=`
-<div onclick="openClient('${c.name}')" class="bg-white p-3 mt-2 flex justify-between">
-<span>${c.name}</span>
-<span class="text-red-500">$${c.pending}</span>
-</div>`;
-});
-}
-
-function openClient(name){
-
-let data=logs.map((l,i)=>({...l,index:i}))
-.filter(l=>l.name.toLowerCase()===name.toLowerCase());
-
-let html=`<button onclick="renderClients()">⬅ Back</button><h3>${name}</h3>`;
-
-data.forEach(l=>{
-html+=`
-<div class="bg-gray-200 p-2 mt-2">
-${formatDate(l.date)} ${formatTime(l.time)}
-<div>
-<button onclick="editLog(${l.index})">Edit</button>
-${!l.paid
-? `<button onclick="markPaid(${l.index})">Paid</button>`
-: `<button onclick="markUnpaid(${l.index})">Paid Already</button>`}
-<button onclick="deleteLog(${l.index})">Delete</button>
-</div>
-</div>`;
-});
-
-html+=`<button onclick="share('${name}')">Share WhatsApp</button>`;
-
-clientList.innerHTML=html;
-}
-
-function markPaid(i){logs[i].paid=true;save();}
-function markUnpaid(i){logs[i].paid=false;save();}
-function deleteLog(i){logs.splice(i,1);save();}
-
-function editLog(i){
-let n=prompt("Edit",logs[i].name);
-if(n) logs[i].name=n;
-save();
-}
-
-function share(name){
-let d=logs.filter(l=>l.name.toLowerCase()===name.toLowerCase()&&!l.paid);
-let total=d.length*15;
-
-let msg=`Hi ${name},%0A`;
-d.forEach(l=>msg+=`${formatDate(l.date)} ${formatTime(l.time)}%0A`);
-msg+=`Total $${total}`;
-
-window.open(`https://wa.me/?text=${msg}`);
-}
-
-function showCalendarLogs(){
-let d=calDate.value;
-let list=logs.filter(l=>l.date===d);
-
-calLogs.innerHTML="";
-list.forEach(l=>{
-calLogs.innerHTML+=`${l.name} - ${formatTime(l.time)}<br>`;
-});
-}
-
-updateStats();
-renderLogs();
-renderClients();
-
-</script>
-
-</body>
-</html>
-function showPage(id){
-document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-document.getElementById(id).classList.add('active');
-}
-
-function toggleDark(){ document.body.classList.toggle("dark"); }
-
-function formatName(n){
-return n.trim().charAt(0).toUpperCase()+n.trim().slice(1).toLowerCase();
-}
-
-function addService(){
-let name = formatName(document.getElementById("name").value);
-let date = document.getElementById("date").value;
-let time = document.getElementById("time").value;
-
-if(!name||!date||!time) return alert("Fill all fields");
-
-logs.push({name,date,time,cost:15,paid:false});
-
-document.getElementById("name").value="";
-document.getElementById("date").value="";
-document.getElementById("time").value="";
-
-save();
-}
-
-function renderLogs(){
-let div=document.getElementById("logList");
-div.innerHTML="";
-
-[...logs].map((l,i)=>({...l,index:i}))
-.sort((a,b)=> parseDate(b.date)-parseDate(a.date)||b.time.localeCompare(a.time))
-.forEach(l=>{
-div.innerHTML+=`
-<div class="bg-white p-2 mt-2 rounded">
-${l.name} - ${formatDate(l.date)} ${formatTime(l.time)}
-</div>`;
-});
-}
-
-function renderClients(){
-
-let map={};
-
-logs.forEach(l=>{
-let key=l.name.toLowerCase();
-if(!map[key]) map[key]={name:l.name,pending:0};
-if(!l.paid) map[key].pending+=(l.cost||15);
-});
-
-let sorted=Object.values(map).sort((a,b)=>b.pending-a.pending);
-
-let div=document.getElementById("clientList");
-div.innerHTML="";
-
-sorted.forEach(c=>{
-div.innerHTML+=`
-<div onclick="openClient('${c.name}')" 
-class="bg-white p-3 mt-2 rounded flex justify-between cursor-pointer">
-<span>${c.name}</span>
-<span class="text-red-500 font-bold">$${c.pending}</span>
-</div>`;
-});
-}
-
-function openClient(name){
-
-let data=logs.map((l,i)=>({...l,index:i}))
-.filter(l=>l.name.toLowerCase()===name.toLowerCase());
-
-let html=`
-<button onclick="renderClients()" class="bg-gray-500 text-white px-2 py-1 mb-2">⬅ Back</button>
-<h3 class="font-bold mb-2">${name}</h3>
-`;
-
-data.sort((a,b)=> parseDate(b.date)-parseDate(a.date)||b.time.localeCompare(a.time));
-
-data.forEach(l=>{
-html+=`
-<div class="bg-gray-200 p-2 mt-2 rounded">
-${formatDate(l.date)} ${formatTime(l.time)}
-<div class="flex gap-2 mt-1">
-<button onclick="editLog(${l.index})" class="bg-blue-500 text-white px-2">Edit</button>
-${!l.paid 
-? `<button onclick="markPaid(${l.index})" class="bg-green-500 text-white px-2">Paid</button>`
-: `<button onclick="markUnpaid(${l.index})" class="bg-pink-500 text-white px-2">Paid Already</button>`}
-<button onclick="deleteLog(${l.index})" class="bg-red-500 text-white px-2">Delete</button>
-</div>
-</div>`;
-});
-
-html+=`
-<button onclick="share('${name}')" class="bg-blue-500 text-white mt-3 p-3 w-full rounded">
-Share via WhatsApp
-</button>`;
-
-document.getElementById("clientList").innerHTML=html;
-}
-
-function editLog(i){
-let n=prompt("Edit Name",logs[i].name);
-if(n) logs[i].name=formatName(n);
-save();
-}
-
-function deleteLog(i){ logs.splice(i,1); save(); }
-function markPaid(i){ logs[i].paid=true; save(); }
-function markUnpaid(i){ logs[i].paid=false; save(); }
-
-function share(name){
-let data=logs.filter(l=>l.name.toLowerCase()===name.toLowerCase()&&!l.paid);
-let total=data.reduce((s,l)=>s+(l.cost||15),0);
-
-let msg=`Hi ${name},%0A%0APending services:%0A`;
-data.forEach(l=> msg+=`${formatDate(l.date)} ${formatTime(l.time)}%0A`);
-msg+=`%0ATotal Due: $${total}`;
-
-window.open(`https://wa.me/?text=${msg}`,"_blank");
-}
-
-function showCalendarLogs(){
-let d=document.getElementById("calDate").value;
-let list=logs.filter(l=>l.date===d)
-.sort((a,b)=>a.time.localeCompare(b.time)||a.name.localeCompare(b.name));
-
-let div=document.getElementById("calLogs");
-div.innerHTML="";
-list.forEach(l=>{
-div.innerHTML+=`<div>${l.name} - ${formatTime(l.time)}</div>`;
-});
-}
-
-renderLogs();
-renderClients();
-
-</script>
-
-</body>
-</html><div id="calLogs"></div>
-</div>
-
-<script>
-
-let logs = JSON.parse(localStorage.getItem("logs")) || [];
-
-function parseDate(d){
-let p = d.split("-");
-return new Date(p[0], p[1]-1, p[2]);
-}
-
-function save(){
-localStorage.setItem("logs", JSON.stringify(logs));
-updateStats();
-renderLogs();
-renderClients();
-autoWeek();
-drawChart();
-}
-
-function showPage(id){
-document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-document.getElementById(id).classList.add('active');
-}
-
-function toggleDark(){ document.body.classList.toggle("dark"); }
-
-function formatName(n){
-return n.trim().charAt(0).toUpperCase() + n.trim().slice(1).toLowerCase();
-}
-
-function getWeekRange(date){
-let d = new Date(date);
-let day = d.getDay();
-day = day === 0 ? 7 : day;
-
-let start = new Date(d);
-start.setHours(0,0,0,0);
-start.setDate(d.getDate() - day + 1);
-
-let end = new Date(start);
-end.setDate(start.getDate() + 6);
-end.setHours(23,59,59,999);
-
-return {start,end};
-}
-
-function addService(){
-let name = formatName(document.getElementById("name").value);
-let date = document.getElementById("date").value;
-let time = document.getElementById("time").value;
-
-if(!name || !date || !time) return alert("Fill all fields");
-
-logs.push({name,date,time,cost:15,paid:false});
-
-document.getElementById("name").value="";
-document.getElementById("date").value="";
-document.getElementById("time").value="";
-
-save();
-}
-
-function updateStats(){
-let now = new Date();
-let {start,end} = getWeekRange(now);
-let month = now.getMonth();
-let year = now.getFullYear();
-
-let monthCount=0, weekCount=0, received=0, pending=0;
-
-logs.forEach(l=>{
-let d = parseDate(l.date);
-
-if(d.getMonth()===month && d.getFullYear()===year) monthCount++;
-if(d>=start && d<=end) weekCount++;
-
-if(l.paid) received+=(l.cost||15);
-else pending+=(l.cost||15);
-});
-
-document.getElementById("monthCount").innerText = monthCount;
-document.getElementById("weekCount").innerText = weekCount;
-document.getElementById("received").innerText = received;
-document.getElementById("pending").innerText = pending;
-}
-
-function renderLogs(){
-let div = document.getElementById("logList");
-div.innerHTML="";
-
-[...logs].map((l,i)=>({...l,index:i}))
-.sort((a,b)=> parseDate(b.date) - parseDate(a.date) || b.time.localeCompare(a.time))
-.forEach(l=>{
-div.innerHTML += `
-<div class="bg-white p-2 mt-2 rounded">
-${l.name} - ${l.date} ${l.time}
-<div class="flex gap-2 mt-1">
-<button onclick="editLog(${l.index})" class="bg-blue-500 text-white px-2">Edit</button>
-<button onclick="deleteLog(${l.index})" class="bg-red-500 text-white px-2">Delete</button>
-</div>
-</div>`;
-});
-}
-
-function deleteLog(i){ logs.splice(i,1); save(); }
-
-function editLog(i){
-let n = prompt("Edit Name", logs[i].name);
-if(n) logs[i].name = formatName(n);
-save();
-}
-
-function renderClients(){
-
-let clientMap = {};
-
-logs.forEach((l,i)=>{
-let key = l.name.toLowerCase();
-
-if(!clientMap[key]){
-clientMap[key] = {name:l.name,pending:0};
-}
-
-if(!l.paid) clientMap[key].pending += (l.cost||15);
-
-});
-
-let sorted = Object.values(clientMap).sort((a,b)=>b.pending - a.pending);
-
-let div = document.getElementById("clientList");
-div.innerHTML = "";
-
-sorted.forEach(c=>{
-div.innerHTML += `
-<div onclick="openClient('${c.name}')" 
-class="bg-white p-2 mt-2 rounded flex justify-between cursor-pointer">
-<span>${c.name}</span>
-<span class="text-red-500 font-bold">$${c.pending}</span>
-</div>`;
-});
-}
-
-function openClient(name){
-
-let data = logs.map((l,index)=>({...l,index}))
-.filter(l=>l.name.toLowerCase()===name.toLowerCase());
-
-let html = `
-<button onclick="renderClients()" 
-class="bg-gray-500 text-white px-2 py-1 mb-2">⬅ Back</button>
-
-<h3 class="font-bold mb-2">${name}</h3>
-`;
-
-data.sort((a,b)=> parseDate(b.date) - parseDate(a.date) || b.time.localeCompare(a.time));
-
-data.forEach(l=>{
-html += `
-<div class="bg-gray-200 p-2 mt-1 rounded">
-${l.date} ${l.time}
-
-<div class="flex gap-2 mt-1">
-
-<button onclick="editLog(${l.index})" class="bg-blue-500 text-white px-2">Edit</button>
-
-${!l.paid 
-? `<button onclick="markPaid(${l.index})" class="bg-green-500 text-white px-2">Paid</button>` 
-: `<button onclick="markUnpaid(${l.index})" class="bg-pink-500 text-white px-2">Paid</button>`}
-
-<button onclick="deleteLog(${l.index})" class="bg-red-500 text-white px-2">Delete</button>
-
-</div>
-</div>`;
-});
-
-html += `
-<button onclick="share('${name}')" 
-class="bg-blue-500 text-white mt-2 p-2 w-full">
-Share via WhatsApp
-</button>
-`;
-
-document.getElementById("clientList").innerHTML = html;
-}
-
-function markPaid(i){ logs[i].paid=true; save(); }
-function markUnpaid(i){ logs[i].paid=false; save(); }
-
-function share(name){
-let data = logs.filter(l=>l.name.toLowerCase()===name.toLowerCase() && !l.paid);
-let total = data.reduce((s,l)=>s+(l.cost||15),0);
-
-let msg = `Hi ${name},%0A%0APending services:%0A`;
-data.forEach(l=> msg += `${l.date} ${l.time}%0A`);
-
-msg += `%0ATotal Due: $${total}`;
-
-window.open(`https://wa.me/?text=${msg}`,"_blank");
-}
-
-function calculateWeek(){
-let val = document.getElementById("weekPicker").value;
-if(!val) return alert("Select date");
-
-let {start,end} = getWeekRange(val);
-
-let s=0,r=0,p=0;
-
-logs.forEach(l=>{
-let d=parseDate(l.date);
-if(d>=start && d<=end){
-s++;
-if(l.paid) r+=(l.cost||15);
-else p+=(l.cost||15);
-}
-});
-
-document.getElementById("wServices").innerText=s;
-document.getElementById("wReceived").innerText=r;
-document.getElementById("wPending").innerText=p;
-}
-
-function autoWeek(){
-let {start,end} = getWeekRange(new Date());
-
-let s=0,r=0,p=0;
-
-logs.forEach(l=>{
-let d=parseDate(l.date);
-if(d>=start && d<=end){
-s++;
-if(l.paid) r+=(l.cost||15);
-else p+=(l.cost||15);
-}
-});
-
-document.getElementById("autoServices").innerText=s;
-document.getElementById("autoReceived").innerText=r;
-document.getElementById("autoPending").innerText=p;
-}
-
-let chart;
-
-function drawChart(){
-let days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-let data=[0,0,0,0,0,0,0];
-
-let {start} = getWeekRange(new Date());
-
-logs.forEach(l=>{
-let d=parseDate(l.date);
-let diff=(d-start)/(1000*60*60*24);
-let index=Math.floor(diff+0.5);
-if(index>=0 && index<7) data[index]++;
-});
-
-if(chart) chart.destroy();
-
-chart = new Chart(document.getElementById("weekChart"),{
-type:'bar',
-data:{labels:days,datasets:[{data}]}
-});
-}
-
-function exportWeekPDF(){
-alert("Use Check Week then print");
-window.print();
-}
-
-function exportExcel(){
-let csv="Name,Date,Time\n";
-logs.forEach(l=> csv+=`${l.name},${l.date},${l.time}\n`);
-let blob=new Blob([csv]);
-let a=document.createElement("a");
-a.href=URL.createObjectURL(blob);
-a.download="logs.csv";
-a.click();
-}
-
-function showCalendarLogs(){
-let d=document.getElementById("calDate").value;
-let list=logs.filter(l=>l.date===d)
-.sort((a,b)=> a.time.localeCompare(b.time) || a.name.localeCompare(b.name));
-
-let div=document.getElementById("calLogs");
-div.innerHTML="";
-list.forEach(l=>{
-div.innerHTML+=`<div>${l.name} - ${l.time}</div>`;
-});
-}
-
-updateStats();
-renderLogs();
-renderClients();
-autoWeek();
 drawChart();
 
 </script>
