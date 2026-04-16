@@ -61,7 +61,7 @@ body { background:#e5e7eb; }
 
 </div>
 
-<!-- SUMMARY PAGE -->
+<!-- SUMMARY -->
 <div id="summary" class="page p-3">
 
 <h2 class="font-bold mb-2">Summary</h2>
@@ -128,6 +128,7 @@ let ampm=h>=12?"PM":"AM";
 h=h%12||12;
 return h+":"+m+" "+ampm;
 }
+
 function formatDate(d){
 let p=d.split("-");
 return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
@@ -187,6 +188,7 @@ ${l.name} - ${formatDate(l.date)} ${formatTime(l.time)}
 </div></div>`;
 });
 }
+
 function deleteLog(i){ logs.splice(i,1); save(); }
 function editLog(i){ let n=prompt("Edit",logs[i].name); if(n) logs[i].name=n; save(); }
 
@@ -243,7 +245,7 @@ calList.innerHTML+=`<div>${l.name} - ${formatTime(l.time)}</div>`;
 });
 }
 
-/* SUMMARY GRAPH */
+/* GRAPHS */
 function applyFilter(){
 drawCharts(fromDate.value,toDate.value);
 }
@@ -252,7 +254,6 @@ function drawCharts(start,end){
 
 let filtered=logs.filter(l=>(!start||l.date>=start)&&(!end||l.date<=end));
 
-/* MONEY GRAPH */
 let r=[0,0,0,0],p=[0,0,0,0];
 
 filtered.forEach(l=>{
@@ -263,7 +264,6 @@ else p[w]+=15;
 }
 });
 
-/* SERVICE GRAPH (Mon-Sun) */
 let days=[0,0,0,0,0,0,0];
 
 filtered.forEach(l=>{
@@ -275,16 +275,20 @@ days[d]++;
 if(moneyChart) moneyChart.destroy();
 if(serviceChart) serviceChart.destroy();
 
-moneyChart=new Chart(moneyChartCanvas,{
+moneyChart=new Chart(document.getElementById("moneyChart"),{
 type:'bar',
-data:{labels:["W1","W2","W3","W4"],
-datasets:[{label:"Received",data:r},{label:"Pending",data:p}]}
+data:{
+labels:["Week1","Week2","Week3","Week4"],
+datasets:[{label:"Received",data:r},{label:"Pending",data:p}]
+}
 });
 
-serviceChart=new Chart(serviceChartCanvas,{
+serviceChart=new Chart(document.getElementById("serviceChart"),{
 type:'bar',
-data:{labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-datasets:[{label:"Services",data:days}]}
+data:{
+labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+datasets:[{label:"Services",data:days}]
+}
 });
 }
 
