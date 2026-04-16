@@ -32,6 +32,7 @@ body { background:#e5e7eb; }
 <button onclick="showPage('log')">Log</button>
 <button onclick="showPage('clients')">Clients</button>
 <button onclick="showPage('calendar')">Calendar</button>
+<button onclick="showPage('summary')">Summary</button>
 </div>
 
 <!-- DASHBOARD -->
@@ -45,13 +46,11 @@ body { background:#e5e7eb; }
 </div>
 
 <div class="grid grid-cols-2 gap-2">
-<div class="bg-white p-2 rounded">Week 1<br>R:$<span id="w1r">0</span> P:$<span id="w1p">0</span></div>
-<div class="bg-white p-2 rounded">Week 2<br>R:$<span id="w2r">0</span> P:$<span id="w2p">0</span></div>
-<div class="bg-white p-2 rounded">Week 3<br>R:$<span id="w3r">0</span> P:$<span id="w3p">0</span></div>
-<div class="bg-white p-2 rounded">Week 4<br>R:$<span id="w4r">0</span> P:$<span id="w4p">0</span></div>
+<div class="bg-white p-2 rounded">Week 1<br>R:$<span id="w1r">0</span> P:$<span id="w1p">0</span><br>S:<span id="w1s">0</span></div>
+<div class="bg-white p-2 rounded">Week 2<br>R:$<span id="w2r">0</span> P:$<span id="w2p">0</span><br>S:<span id="w2s">0</span></div>
+<div class="bg-white p-2 rounded">Week 3<br>R:$<span id="w3r">0</span> P:$<span id="w3p">0</span><br>S:<span id="w3s">0</span></div>
+<div class="bg-white p-2 rounded">Week 4<br>R:$<span id="w4r">0</span> P:$<span id="w4p">0</span><br>S:<span id="w4s">0</span></div>
 </div>
-
-<canvas id="chart" class="bg-white mt-3 p-2 rounded"></canvas>
 
 <div class="bg-white p-3 mt-3 rounded">
 <input id="name" placeholder="Customer Name" class="border p-1 w-full mb-2">
@@ -62,9 +61,25 @@ body { background:#e5e7eb; }
 
 </div>
 
+<!-- SUMMARY PAGE -->
+<div id="summary" class="page p-3">
+
+<h2 class="font-bold mb-2">Summary</h2>
+
+<div class="flex gap-2 mb-2">
+<input type="date" id="fromDate" class="border p-1 w-full">
+<input type="date" id="toDate" class="border p-1 w-full">
+<button onclick="applyFilter()" class="bg-blue-500 text-white px-2">Filter</button>
+</div>
+
+<canvas id="moneyChart" class="bg-white p-2 rounded mb-3"></canvas>
+<canvas id="serviceChart" class="bg-white p-2 rounded"></canvas>
+
+</div>
+
 <!-- LOG -->
 <div id="log" class="page p-3">
-<h2 class="font-bold mb-2">Log History</h2>
+<h2 class="font-bold mb-2">Log</h2>
 <div id="logList"></div>
 </div>
 
@@ -83,27 +98,29 @@ body { background:#e5e7eb; }
 <script>
 
 let logs = JSON.parse(localStorage.getItem("logs")) || [];
-let chart;
+let moneyChart, serviceChart;
 
-/* ---------- BASIC ---------- */
-
+/* SAVE */
 function save(){
 localStorage.setItem("logs", JSON.stringify(logs));
 update();
 renderLogs();
 renderClients();
-drawChart();
+drawCharts();
 }
 
+/* NAV */
 function showPage(id){
 document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
 document.getElementById(id).classList.add('active');
 }
 
+/* DARK */
 function toggleDark(){
 document.body.classList.toggle("dark");
 }
 
+/* FORMAT */
 function formatTime(t){
 let [h,m]=t.split(":");
 h=+h;
@@ -111,60 +128,41 @@ let ampm=h>=12?"PM":"AM";
 h=h%12||12;
 return h+":"+m+" "+ampm;
 }
-
 function formatDate(d){
 let p=d.split("-");
 return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 }
 
-/* ---------- ADD ---------- */
-
+/* ADD */
 function addService(){
-let name=document.getElementById("name").value.trim();
-let date=document.getElementById("date").value;
-let time=document.getElementById("time").value;
-
-if(!name||!date||!time) return alert("Fill all fields");
+let name=nameInput.value.trim();
+let date=dateInput.value;
+let time=timeInput.value;
+if(!name||!date||!time) return;
 
 logs.push({name,date,time,paid:false});
 save();
 }
 
-/* ---------- WEEK LOGIC ---------- */
-
-function getWeekStart(d){
-let date=new Date(d);
-let day=date.getDay()||7;
-if(day!==1) date.setDate(date.getDate()-day+1);
-return date;
-}
-
-/* ---------- DASHBOARD ---------- */
-
+/* DASHBOARD */
 function update(){
-let now=new Date();
-let start=getWeekStart(now);
-
-let weekCount=0,received=0,pending=0;
-
-let w=[{r:0,p:0},{r:0,p:0},{r:0,p:0},{r:0,p:0}];
+let received=0,pending=0;
+let w=[{r:0,p:0,s:0},{r:0,p:0,s:0},{r:0,p:0,s:0},{r:0,p:0,s:0}];
 
 logs.forEach(l=>{
 let d=new Date(l.date);
+let i=Math.floor((d.getDate()-1)/7);
 
-if(d>=start && d<=new Date(start.getTime()+6*86400000)) weekCount++;
-
-let index=Math.floor((d.getDate()-1)/7);
-if(index<4){
-if(l.paid) w[index].r+=15;
-else w[index].p+=15;
+if(i<4){
+w[i].s++;
+if(l.paid) w[i].r+=15;
+else w[i].p+=15;
 }
 
 if(l.paid) received+=15;
 else pending+=15;
 });
 
-document.getElementById("weekCount").innerText=weekCount;
 document.getElementById("received").innerText=received;
 document.getElementById("pending").innerText=pending;
 document.getElementById("total").innerText=logs.length;
@@ -172,43 +170,29 @@ document.getElementById("total").innerText=logs.length;
 ["1","2","3","4"].forEach((n,i)=>{
 document.getElementById("w"+n+"r").innerText=w[i].r;
 document.getElementById("w"+n+"p").innerText=w[i].p;
+document.getElementById("w"+n+"s").innerText=w[i].s;
 });
 }
 
-/* ---------- LOG ---------- */
-
+/* LOG */
 function renderLogs(){
-let div=document.getElementById("logList");
-div.innerHTML="";
-
+logList.innerHTML="";
 logs.forEach((l,i)=>{
-div.innerHTML+=`
+logList.innerHTML+=`
 <div class="bg-white p-2 mt-2 rounded">
 ${l.name} - ${formatDate(l.date)} ${formatTime(l.time)}
 <div class="flex gap-2 mt-1">
 <button onclick="editLog(${i})" class="bg-blue-500 text-white px-2">Edit</button>
 <button onclick="deleteLog(${i})" class="bg-red-500 text-white px-2">Delete</button>
-</div>
-</div>`;
+</div></div>`;
 });
 }
+function deleteLog(i){ logs.splice(i,1); save(); }
+function editLog(i){ let n=prompt("Edit",logs[i].name); if(n) logs[i].name=n; save(); }
 
-function deleteLog(i){
-logs.splice(i,1);
-save();
-}
-
-function editLog(i){
-let n=prompt("Edit Name",logs[i].name);
-if(n) logs[i].name=n;
-save();
-}
-
-/* ---------- CLIENTS ---------- */
-
+/* CLIENTS */
 function renderClients(){
 let map={};
-
 logs.forEach(l=>{
 if(!map[l.name]) map[l.name]={pending:0};
 if(!l.paid) map[l.name].pending+=15;
@@ -217,11 +201,9 @@ if(!l.paid) map[l.name].pending+=15;
 let arr=Object.keys(map).map(n=>({name:n,pending:map[n].pending}));
 arr.sort((a,b)=>b.pending-a.pending);
 
-let div=document.getElementById("clientList");
-div.innerHTML="";
-
+clientList.innerHTML="";
 arr.forEach(c=>{
-div.innerHTML+=`
+clientList.innerHTML+=`
 <div onclick="openClient('${c.name}')" class="bg-white p-2 mt-2 rounded flex justify-between">
 <span>${c.name}</span>
 <span class="text-red-500">$${c.pending}</span>
@@ -232,104 +214,85 @@ div.innerHTML+=`
 function openClient(name){
 let list=logs.map((l,i)=>({...l,i})).filter(l=>l.name===name);
 
-let html=`<button onclick="renderClients()" class="bg-gray-500 text-white px-2 mb-2">⬅ Back</button>`;
-html+=`<h3 class="font-bold">${name}</h3>`;
+let html=`<button onclick="renderClients()" class="bg-gray-500 text-white px-2 mb-2">⬅ Back</button><h3>${name}</h3>`;
 
 list.forEach(l=>{
 html+=`
 <div class="bg-gray-200 p-2 mt-2">
 ${formatDate(l.date)} ${formatTime(l.time)}
 <div class="flex gap-2 mt-1">
-
 <button onclick="editLog(${l.i})" class="bg-blue-500 text-white px-2">Edit</button>
-
-${l.paid 
-? `<button onclick="togglePaid(${l.i})" class="bg-pink-500 text-white px-2">Paid Already</button>` 
+${l.paid
+? `<button onclick="togglePaid(${l.i})" class="bg-pink-500 text-white px-2">Paid Already</button>`
 : `<button onclick="togglePaid(${l.i})" class="bg-green-500 text-white px-2">Paid</button>`}
-
 <button onclick="deleteLog(${l.i})" class="bg-red-500 text-white px-2">Delete</button>
-
-</div>
-</div>`;
+</div></div>`;
 });
 
-html+=`<button onclick="share('${name}')" class="bg-blue-500 text-white mt-2 p-2 w-full">Share via WhatsApp</button>`;
-
-document.getElementById("clientList").innerHTML=html;
+clientList.innerHTML=html;
 }
 
-function togglePaid(i){
-logs[i].paid=!logs[i].paid;
-save();
-}
+function togglePaid(i){ logs[i].paid=!logs[i].paid; save(); }
 
-/* ---------- WHATSAPP ---------- */
-
-function share(name){
-let data=logs.filter(l=>l.name===name&&!l.paid);
-let total=data.length*15;
-
-let msg=`Hi ${name},%0A%0APending:%0A`;
-
-data.forEach(l=>{
-msg+=formatDate(l.date)+" "+formatTime(l.time)+"%0A";
-});
-
-msg+=`%0ATotal: $${total}`;
-window.open("https://wa.me/?text="+msg);
-}
-
-/* ---------- CALENDAR ---------- */
-
+/* CALENDAR */
 function showCalendar(){
-let d=document.getElementById("calDate").value;
-let list=logs.filter(l=>l.date===d);
-
-let div=document.getElementById("calList");
-div.innerHTML="";
-
-list.forEach(l=>{
-div.innerHTML+=`<div>${l.name} - ${formatTime(l.time)}</div>`;
+let d=calDate.value;
+calList.innerHTML="";
+logs.filter(l=>l.date===d).forEach(l=>{
+calList.innerHTML+=`<div>${l.name} - ${formatTime(l.time)}</div>`;
 });
 }
 
-/* ---------- GRAPH ---------- */
+/* SUMMARY GRAPH */
+function applyFilter(){
+drawCharts(fromDate.value,toDate.value);
+}
 
-function drawChart(){
+function drawCharts(start,end){
 
-let received=[0,0,0,0];
-let pending=[0,0,0,0];
+let filtered=logs.filter(l=>(!start||l.date>=start)&&(!end||l.date<=end));
 
-logs.forEach(l=>{
-let d=new Date(l.date);
-let w=Math.floor((d.getDate()-1)/7);
+/* MONEY GRAPH */
+let r=[0,0,0,0],p=[0,0,0,0];
 
+filtered.forEach(l=>{
+let w=Math.floor((new Date(l.date).getDate()-1)/7);
 if(w<4){
-if(l.paid) received[w]+=15;
-else pending[w]+=15;
+if(l.paid) r[w]+=15;
+else p[w]+=15;
 }
 });
 
-if(chart) chart.destroy();
+/* SERVICE GRAPH (Mon-Sun) */
+let days=[0,0,0,0,0,0,0];
 
-chart=new Chart(document.getElementById("chart"),{
+filtered.forEach(l=>{
+let d=new Date(l.date).getDay();
+d=d===0?6:d-1;
+days[d]++;
+});
+
+if(moneyChart) moneyChart.destroy();
+if(serviceChart) serviceChart.destroy();
+
+moneyChart=new Chart(moneyChartCanvas,{
 type:'bar',
-data:{
-labels:["Week 1","Week 2","Week 3","Week 4"],
-datasets:[
-{label:"Received",data:received},
-{label:"Pending",data:pending}
-]
-}
+data:{labels:["W1","W2","W3","W4"],
+datasets:[{label:"Received",data:r},{label:"Pending",data:p}]}
+});
+
+serviceChart=new Chart(serviceChartCanvas,{
+type:'bar',
+data:{labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+datasets:[{label:"Services",data:days}]}
 });
 }
 
-/* ---------- INIT ---------- */
-
+/* INIT */
 update();
 renderLogs();
 renderClients();
-drawChart();
+drawCharts();
 
 </script>
 
